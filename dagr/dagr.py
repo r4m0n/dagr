@@ -139,8 +139,9 @@ class Dagr:
 
     def get(self, url, file_name=None):
         if (file_name and not self.overwrite and
-                glob(file_name + ".*")):
-            print(glob(file_name + ".*")[0] + " exists - skipping")
+                glob_name =  glob(file_name + ".*")
+            if glob_name:        
+                print(glob_name, "exists - skipping")
             return None
 
         if isinstance(url, Tag):
