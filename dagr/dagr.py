@@ -221,6 +221,16 @@ class Dagr:
             filelink = self.browser.get_url()
             return (filename, filelink)
 
+         if not filelink:
+            iframe_search = current_page.find('iframe', {'class': 'flashtime'})
+            if iframe_search:
+                print(iframe_search.attrs['src'])
+                self.browser.open(iframe_search.attrs['src'])
+                current_page = self.browser.get_current_page()
+                embed_search = current_page.find('embed', {'id': 'sandboxembed'})
+                if embed_search:
+                    filelink = embed_search.attrs['src']
+
         if not filelink:
             if mature_error:
                 if self.mature:
