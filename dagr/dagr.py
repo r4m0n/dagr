@@ -106,6 +106,8 @@ class Dagr:
             self.directory = abspath(
                 expanduser(my_conf.get("Dagr", "OutputDirectory"))
                 ) + "/"
+        if my_conf.has_option("Dagr", "SaveProgress"):
+            self.save_progress = my_conf.getint("Dagr", "SaveProgress")
 
     def start(self):
         if not self.browser:
@@ -300,6 +302,8 @@ class Dagr:
 
         print("Total deviations to download: " + str(len(pages)))
         for count, link in enumerate(pages, start=1):
+            if self.save_progress and count % self.save_progress == 0:
+                self.update_pages_cache(base_dir, existing_pages)
             if self.verbose:
                 print("Downloading " + str(count) + " of " +
                       str(len(pages)) + " ( " + link + " )")
@@ -324,8 +328,12 @@ class Dagr:
                         existing_pages.append(link)
             else:
                 print(filelink)
+        self.update_pages_cache(base_dir, existing_pages)
 
+    def update_pages_cache(self, base_dir, existing_pages):
         # Update downloaded pages cache
+        if self.verbose:
+            print('Saving progress')
         with open(base_dir + "/.dagr_downloaded_pages", "w") as filehandle:
             json.dump(existing_pages, filehandle)
 
@@ -464,6 +472,8 @@ download oldest deviations first
 redownloads a file even if it already exists
 -v, --verbose
 outputs detailed information on downloads
+-p, --progress=COUNT
+save image cache after every COUNT downloads
 
 Proxies:
  you can also configure proxies by setting the environment variables
@@ -482,11 +492,12 @@ def main():
         print_help()
         sys.exit()
 
-    g_opts = "d:mu:p:a:q:c:vfgshrto"
+    g_opts = "d:mu:p:a:q:c:vfgshrtop"
     g_long_opts = ['directory=', 'mature',
                    'album=', 'query=', 'collection=',
                    'verbose', 'favs', 'gallery', 'scraps',
-                   'help', 'reverse', 'test', 'overwrite']
+                   'help', 'reverse', 'test', 'overwrite',
+                   'progress']
     try:
         options, deviants = gnu_getopt(sys.argv[1:], g_opts, g_long_opts)
     except GetoptError as err:
@@ -524,6 +535,9 @@ def main():
             ripper.test_only = True
         elif opt in ('-o', '--overwrite'):
             ripper.overwrite = True
+        elif opt in ('-p', '--progress'):
+            if arg:
+                ripper.save_progress = int(arg)
 
     print(Dagr.NAME + " v" + Dagr.__version__ + " - deviantArt gallery ripper")
     if deviants == []:
