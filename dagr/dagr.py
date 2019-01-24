@@ -345,6 +345,8 @@ class Dagr:
             base_url += "gallery/" + mode_arg + "?offset="
         elif mode == "query":
             base_url += "gallery/?q=" + mode_arg + "&offset="
+        elif mode == "category":
+            base_url += "gallery/?catpath=" + mode_arg + "&offset="
 
         pages = self.get_pages(mode, base_url)
         if not pages:
@@ -424,6 +426,7 @@ def print_help():
           " [-d directory] " + "[-fgmhorstv] " +
           "[-q query_text] [-c collection_id/collection_name] " +
           "[-a album_id/album_name] " +
+          "[-k category] " +
           "deviant1 [deviant2] [...]")
     print("Example: " + Dagr.NAME + " -gsfv derp123 blah55")
     print("For extended help and other options, run " + Dagr.NAME + " -h")
@@ -453,6 +456,8 @@ downloads specified album
  Example: 123456789/my_first_album
 -q, --query=QUERY_TEXT
 downloads artwork matching specified query string
+-k, --category=CATEGORY
+downloads artwork matching a category with slashes (/category/sub)
 -t, --test
 skips the actual downloads, just prints URLs
 -h, --help
@@ -475,17 +480,18 @@ $ export HTTPS_PROXY="http://10.10.1.10:1080"
 
 def main():
     gallery = scraps = favs = False
-    collection = album = query = ""
+    collection = album = query = category = ""
 
     if len(sys.argv) <= 1:
         print_help()
         sys.exit()
 
-    g_opts = "d:mu:p:a:q:c:vfgshrto"
+    g_opts = "d:mu:p:a:q:k:c:vfgshrto"
     g_long_opts = ['directory=', 'mature',
                    'album=', 'query=', 'collection=',
                    'verbose', 'favs', 'gallery', 'scraps',
-                   'help', 'reverse', 'test', 'overwrite']
+                   'help', 'reverse', 'test', 'overwrite',
+                   'category']
     try:
         options, deviants = gnu_getopt(sys.argv[1:], g_opts, g_long_opts)
     except GetoptError as err:
@@ -519,6 +525,8 @@ def main():
             album = arg.strip()
         elif opt in ('-q', '--query'):
             query = arg.strip().strip('"')
+        elif opt in ('-k', '--category'):
+            category = arg.strip().strip('"')
         elif opt in ('-t', '--test'):
             ripper.test_only = True
         elif opt in ('-o', '--overwrite'):
@@ -528,7 +536,7 @@ def main():
     if deviants == []:
         print("No deviants entered. Exiting.")
         sys.exit()
-    if not any([gallery, scraps, favs, collection, album, query]):
+    if not any([gallery, scraps, favs, collection, album, query, category]):
         print("Nothing to do. Exiting.")
         sys.exit()
 
@@ -577,6 +585,8 @@ def main():
                 ripper.deviant_get("album", mode_arg=album)
             if query:
                 ripper.deviant_get("query", mode_arg=query)
+            if category:
+                ripper.deviant_get("category", mode_arg=category)
     print("Job complete.")
 
     ripper.print_errors()
