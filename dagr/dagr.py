@@ -270,7 +270,8 @@ class Dagr:
                     pages.append(match)
 
             done = re.findall("(This section has no deviations yet!|"
-                              "This collection has no items yet!)",
+                              "This collection has no items yet!|"
+                              "Sorry, we found no relevant results.)",
                               html, re.IGNORECASE | re.S)
 
             if done:
