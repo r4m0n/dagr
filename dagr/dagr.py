@@ -457,7 +457,7 @@ downloads specified album
 -q, --query=QUERY_TEXT
 downloads artwork matching specified query string
 -k, --category=CATEGORY
-downloads artwork matching a category with slashes (/category/sub)
+downloads artwork matching a category (value in catpath in URL)
 -t, --test
 skips the actual downloads, just prints URLs
 -h, --help
