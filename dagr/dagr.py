@@ -245,35 +245,42 @@ class Dagr:
 
         return (filename, filelink)
     
-    def find_video(self, current_page):
-        scripts = current_page.find_all('script', {'type':'text/javascript'})
-        if scripts:
-            try:
-                from calmjs.parse import es5 as calmjs_es5
-                from calmjs.parse.asttypes import Assign as calmjs_assign
-                from calmjs.parse.walkers import Walker as calmjs_walker
-                scripts = [script for script in scripts if not script.has_attr('src')]
-                script_contents_filtered = (content for content in
-                    (script.get_text() for script in scripts)
-                    if content and 'deviantART.pageData=' in content)
-                walker = calmjs_walker()
-                for script_content in script_contents_filtered:
-                    es5_script = calmjs_es5(script_content)
-                    try:
-                        pageData=next(walker.filter(es5_script, lambda node: (
-                                isinstance(node, calmjs_assign) and
-                                str(node.left) == 'deviantART.pageData')))
-                        film = next(walker.filter(pageData.right, lambda pdnode: (
-                                isinstance(pdnode, calmjs_assign) and str(pdnode.left) =='"film"')))
-                        sizes = next(walker.filter(film.right, lambda fnode: (
-                            isinstance(fnode, calmjs_assign) and str(fnode.left) =='"sizes"')))
-                        best_res = list(walker.filter(sizes.right, lambda snode: (
-                            isinstance(snode, calmjs_assign) and  str(snode.left) == '"src"')))[-1]
-                        return(json.loads(str(best_res.right)))
-                    except StopIteration:
-                        pass
-            except ImportError:
-                pass
+   def find_video(self, current_page):
+        try:
+            script = self.filter_page_scripts(current_page, 'deviantART.pageData=')
+            best_res = self.extract_nested_assign(script,['deviantART.pageData', '"film"', '"sizes"'])[-1]
+            return json.loads(str(self.extract_nested_assign(best_res, ['"src"'])))
+        except (ImportError, StopIteration):
+            pass
+
+    def filter_page_scripts(self, current_page, filter):
+        return next(content for content in
+                        (script.get_text() for script in
+                            current_page.find_all('script', {'type':'text/javascript'}))
+                        if content and filter in content)
+
+    def extract_nested_assign(self, node, identifiers):
+        from calmjs.parse import es5 as calmjs_es5
+        from calmjs.parse.asttypes import (
+            Node as calmjs_node,
+            Assign as calmjs_assign,
+            Object as calmjs_obj
+            )
+        from calmjs.parse.walkers import Walker as calmjs_walker
+        if not isinstance(node, calmjs_node):
+            node  = calmjs_es5(node)
+        walker = calmjs_walker()
+        def calmjs_do_extract(node, identifiers):
+            identifier = identifiers.pop(0)
+            sub_node = next(walker.filter(node, lambda n: (
+                isinstance(n, calmjs_assign) and
+                str(n.left) == identifier)))
+            if identifiers:
+                return self.extract_nested_assign(sub_node, identifiers)
+            if isinstance(sub_node.right, calmjs_obj):
+                return list(sub_node.right)
+            return sub_node.right
+        return calmjs_do_extract(node, identifiers)
 
     def handle_download_error(self, link, link_error):
         error_string = str(link_error)
