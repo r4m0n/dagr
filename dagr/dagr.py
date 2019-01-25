@@ -250,7 +250,7 @@ class Dagr:
         if scripts:
             try:
                 from calmjs.parse import es5 as calmjs_es5
-                from calmjs.parse.asttypes import Assign as calmjs_assign, Object as calmjs_obj
+                from calmjs.parse.asttypes import Assign as calmjs_assign
                 from calmjs.parse.walkers import Walker as calmjs_walker
                 scripts = [script for script in scripts if not script.has_attr('src')]
                 script_contents_filtered = (content for content in
