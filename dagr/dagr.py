@@ -255,9 +255,10 @@ class Dagr:
 
     def filter_page_scripts(self, current_page, filter):
         return next(content for content in
-                        (script.get_text() for script in
-                            current_page.find_all('script', {'type':'text/javascript'}))
-                        if content and filter in content)
+                    (script.get_text() for script in
+                            current_page.find_all('script', {'type':'text/javascript'})
+                        if not script.has_attr('src'))
+                    if content and filter in content)
 
     def extract_nested_assign(self, node, identifiers):
         from calmjs.parse import es5 as calmjs_es5
