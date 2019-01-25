@@ -221,7 +221,10 @@ class Dagr:
             filelink = self.browser.get_url()
             return (filename, filelink)
 
-         if not filelink:
+        if not filelink:
+           filelink = self.find_video(current_page)
+
+        if not filelink:
             iframe_search = current_page.find('iframe', {'class': 'flashtime'})
             if iframe_search:
                 self.browser.open(iframe_search.attrs['src'])
@@ -241,6 +244,36 @@ class Dagr:
                 raise DagrException("all attemps to find a link failed")
 
         return (filename, filelink)
+    
+    def find_video(self, current_page):
+        scripts = current_page.find_all('script', {'type':'text/javascript'})
+        if scripts:
+            try:
+                from calmjs.parse import es5 as calmjs_es5
+                from calmjs.parse.asttypes import Assign as calmjs_assign, Object as calmjs_obj
+                from calmjs.parse.walkers import Walker as calmjs_walker
+                scripts = [script for script in scripts if not script.has_attr('src')]
+                script_contents_filtered = (content for content in
+                    (script.get_text() for script in scripts)
+                    if content and 'deviantART.pageData=' in content)
+                walker = calmjs_walker()
+                for script_content in script_contents_filtered:
+                    es5_script = calmjs_es5(script_content)
+                    try:
+                        pageData=next(walker.filter(es5_script, lambda node: (
+                                isinstance(node, calmjs_assign) and
+                                str(node.left) == 'deviantART.pageData')))
+                        film = next(walker.filter(pageData.right, lambda pdnode: (
+                                isinstance(pdnode, calmjs_assign) and str(pdnode.left) =='"film"')))
+                        sizes = next(walker.filter(film.right, lambda fnode: (
+                            isinstance(fnode, calmjs_assign) and str(fnode.left) =='"sizes"')))
+                        best_res = list(walker.filter(sizes.right, lambda snode: (
+                            isinstance(snode, calmjs_assign) and  str(snode.left) == '"src"')))[-1]
+                        return(json.loads(str(best_res.right)))
+                    except StopIteration:
+                        pass
+            except ImportError:
+                pass
 
     def handle_download_error(self, link, link_error):
         error_string = str(link_error)
