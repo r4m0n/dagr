@@ -230,6 +230,18 @@ class Dagr:
             return (filename, filelink)
 
         if not filelink:
+           filelink = self.find_video(current_page)
+
+        if not filelink:
+            iframe_search = current_page.find('iframe', {'class': 'flashtime'})
+            if iframe_search:
+                self.browser.open(iframe_search.attrs['src'])
+                current_page = self.browser.get_current_page()
+                embed_search = current_page.find('embed', {'id': 'sandboxembed'})
+                if embed_search:
+                    filelink = embed_search.attrs['src']
+
+        if not filelink:
             if mature_error:
                 if self.mature:
                     raise DagrException("maybe not an image")
@@ -240,6 +252,44 @@ class Dagr:
                 raise DagrException("all attemps to find a link failed")
 
         return (filename, filelink)
+    
+   def find_video(self, current_page):
+        try:
+            script = self.filter_page_scripts(current_page, 'deviantART.pageData=')
+            best_res = self.extract_nested_assign(script,['deviantART.pageData', '"film"', '"sizes"'])[-1]
+            return json.loads(str(self.extract_nested_assign(best_res, ['"src"'])))
+        except (ImportError, StopIteration):
+            pass
+
+    def filter_page_scripts(self, current_page, filter):
+        return next(content for content in
+                    (script.get_text() for script in
+                            current_page.find_all('script', {'type':'text/javascript'})
+                        if not script.has_attr('src'))
+                    if content and filter in content)
+
+    def extract_nested_assign(self, node, identifiers):
+        from calmjs.parse import es5 as calmjs_es5
+        from calmjs.parse.asttypes import (
+            Node as calmjs_node,
+            Assign as calmjs_assign,
+            Object as calmjs_obj
+            )
+        from calmjs.parse.walkers import Walker as calmjs_walker
+        if not isinstance(node, calmjs_node):
+            node  = calmjs_es5(node)
+        walker = calmjs_walker()
+        def calmjs_do_extract(node, identifiers):
+            identifier = identifiers.pop(0)
+            sub_node = next(walker.filter(node, lambda n: (
+                isinstance(n, calmjs_assign) and
+                str(n.left) == identifier)))
+            if identifiers:
+                return self.extract_nested_assign(sub_node, identifiers)
+            if isinstance(sub_node.right, calmjs_obj):
+                return list(sub_node.right)
+            return sub_node.right
+        return calmjs_do_extract(node, identifiers)
 
     def handle_download_error(self, link, link_error):
         error_string = str(link_error)
@@ -269,7 +319,8 @@ class Dagr:
                     pages.append(match)
 
             done = re.findall("(This section has no deviations yet!|"
-                              "This collection has no items yet!)",
+                              "This collection has no items yet!|"
+                              "Sorry, we found no relevant results.)",
                               html, re.IGNORECASE | re.S)
 
             if done:
