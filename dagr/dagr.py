@@ -145,8 +145,8 @@ class Dagr:
                                        user_agent=choice(user_agents))
 
     def get(self, url, file_name=None):
-        if (file_name and not self.overwrite and
-                glob_name =  glob(file_name + ".*")
+        if (file_name and not self.overwrite):
+            glob_name = glob(file_name + ".*")
             if glob_name:
                 print(glob_name[0], "exists - skipping")
             return None
@@ -252,8 +252,8 @@ class Dagr:
                 raise DagrException("all attemps to find a link failed")
 
         return (filename, filelink)
-    
-   def find_video(self, current_page):
+
+    def find_video(self, current_page):
         try:
             script = self.filter_page_scripts(current_page, 'deviantART.pageData=')
             best_res = self.extract_nested_assign(script,['deviantART.pageData', '"film"', '"sizes"'])[-1]
@@ -555,10 +555,10 @@ def main():
 
     g_opts = "d:mu:p:a:q:k:p:c:vfgshrto"
     g_long_opts = ['directory=', 'mature',
-                   'album=', 'query=', 'collection=',
-                   'verbose', 'favs', 'gallery', 'scraps',
-                   'help', 'reverse', 'test', 'overwrite',
-                   'category', 'progress']
+                    'album=', 'query=', 'collection=',
+                    'verbose', 'favs', 'gallery', 'scraps',
+                    'help', 'reverse', 'test', 'overwrite',
+                    'category', 'progress']
     try:
         options, deviants = gnu_getopt(sys.argv[1:], g_opts, g_long_opts)
     except GetoptError as err:
