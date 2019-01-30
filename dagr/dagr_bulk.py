@@ -9,6 +9,8 @@ class DagrBulkConfig():
         self.queries = {}
         self.favs = []
         self.galleries = []
+        self.scraps = []
+        self.categories = {}
         with open('dagr_bulk.json', 'r') as filehandle:
             self.__dict__.update(json.load(filehandle))
 
@@ -22,9 +24,14 @@ def main():
        run_ripper(ripper, [deviant], collections=collections)
     for deviant, queries in config.queries.items():
         run_ripper(ripper, [deviant], queries=queries)
-    run_ripper(ripper, config.galleries, galleries=True)
-    run_ripper(ripper, config.galleries, scraps=True)
-    run_ripper(ripper, config.favs, favs=True)
+    for deviant, category in config.categories.items():
+        run_ripper(ripper, [deviant], categories=category)
+    if config.galleries:
+        run_ripper(ripper, config.galleries, galleries=True)
+    if config.scraps:
+        run_ripper(ripper, config.galleries, scraps=True)
+    if config.favs:
+        run_ripper(ripper, config.favs, favs=True)
     ripper.print_errors()
 
 
