@@ -140,8 +140,8 @@ class Dagr:
                                        user_agent=choice(user_agents))
 
     def get(self, url, file_name=None):
-        if (file_name and not self.overwrite and
-                glob_name =  glob(file_name + ".*")
+        if (file_name and not self.overwrite):
+            glob_name = glob(file_name + ".*")
             if glob_name:
                 print(glob_name[0], "exists - skipping")
             return None
