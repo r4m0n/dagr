@@ -499,9 +499,9 @@ def main():
 
     g_opts = "d:mu:p:a:q:k:p:c:vfgshrto"
     g_long_opts = ['directory=', 'mature',
-                   'album=', 'query=', 'collection=',
-                   'verbose', 'favs', 'gallery', 'scraps',
-                   'help', 'reverse', 'test', 'overwrite',
+                    'album=', 'query=', 'collection=',
+                    'verbose', 'favs', 'gallery', 'scraps',
+                    'help', 'reverse', 'test', 'overwrite',
                     'category', 'progress']
     try:
         options, deviants = gnu_getopt(sys.argv[1:], g_opts, g_long_opts)
