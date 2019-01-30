@@ -175,6 +175,7 @@ class Dagr:
                     if file_name:
                         with open(file_name, "wb") as local_file:
                             local_file.write(get_resp.content)
+                break
             except Exception as ex:
                 if self.verbose:
                     traceback.print_exc()
