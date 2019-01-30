@@ -13,6 +13,7 @@
 import json
 import re
 import sys
+import traceback
 from email.utils import parsedate
 from getopt import gnu_getopt, GetoptError
 from glob import glob
@@ -85,9 +86,14 @@ class Dagr:
         self.reverse = False
         self.test_only = False
         self.verbose = False
+        self.save_progress = None
+        self.debug = False
+        self.retry_exception_names = {}
 
         # Current status
         self.deviant = ""
+
+        self.load_configuration()
 
     def init_mimetypes(self):
         mimetypes_init()
@@ -113,6 +119,10 @@ class Dagr:
                 ) + "/"
         if my_conf.has_option("Dagr", "SaveProgress"):
             self.save_progress = my_conf.getint("Dagr", "SaveProgress")
+        if my_conf.has_option("Dagr", "Verbose"):
+            self.verbose = my_conf.getboolean("Dagr", "Verbose")
+        if my_conf.has_option("Dagr", "Debug"):
+            self.debug = my_conf.getboolean("Dagr", "Debug")
 
     def start(self):
         if not self.browser:
@@ -149,17 +159,34 @@ class Dagr:
             glob_name = glob(file_name + ".*")
             if glob_name:
                 print(glob_name[0], "exists - skipping")
-            return None
+                return None
 
-        if isinstance(url, Tag):
-            # Download and save soup links
-            get_resp = self.browser.download_link(url, file_name)
-        else:
-            # Direct URL
-            get_resp = self.browser.session.get(url)
-            if file_name:
-                with open(file_name, "wb") as local_file:
-                    local_file.write(get_resp.content)
+        get_resp = None
+        tries = {}
+        while True:
+            try:
+                if isinstance(url, Tag):
+                    # Download and save soup links
+                    get_resp = self.browser.download_link(url, file_name)
+                else:
+                    # Direct URL
+                    get_resp = self.browser.session.get(url)
+                    if file_name:
+                        with open(file_name, "wb") as local_file:
+                            local_file.write(get_resp.content)
+            except Exception as ex:
+                if self.verbose:
+                    traceback.print_exc()
+                except_name = type(ex).__name__
+                if except_name in self.retry_exception_names:
+                    if not except_name in tries:
+                        tries[except_name] = 0
+                    tries[except_name] += 1
+                    if tries[except_name]  < 3:
+                        continue
+                    raise DagrException('Failed to get url: {}'.format(except_name))
+                else:
+                    raise ex
 
         if get_resp.status_code != req_codes.ok:
             raise DagrException("incorrect status code - " +
@@ -352,7 +379,8 @@ class Dagr:
                 existing_pages = json.load(filehandle)
         except FNF_ERROR:
             # May not exist (new directory, ...)
-            pass
+            if self.verbose:
+                print('.dagr_downloaded_pages not found')
         if not self.overwrite:
             pages = [x for x in pages if x not in existing_pages]
 
@@ -384,7 +412,9 @@ class Dagr:
                         existing_pages.append(link)
             else:
                 print(filelink)
-        self.update_pages_cache(base_dir, existing_pages)
+        if pages:
+            self.update_pages_cache(base_dir, existing_pages)
+
 
     def update_pages_cache(self, base_dir, existing_pages):
         # Update downloaded pages cache
@@ -544,6 +574,15 @@ $ export HTTP_PROXY="http://10.10.1.10:3128"
 $ export HTTPS_PROXY="http://10.10.1.10:1080"
 """)
 
+def get_deviant(ripper, deviant_name):
+    group = False
+    html = ripper.get('https://www.deviantart.com/' + deviant_name + '/')
+    deviant = re.search(r'<title>.[A-Za-z0-9-]*', html,
+                        re.IGNORECASE).group(0)[7:]
+    deviant = re.sub('[^a-zA-Z0-9_-]+', '', deviant)
+    if re.search('<dt class="f h">Group</dt>', html):
+        group = True
+    return deviant, group
 
 def main():
     gallery = scraps = favs = False
@@ -566,7 +605,6 @@ def main():
         sys.exit()
 
     ripper = Dagr()
-    ripper.load_configuration()
 
     for opt, arg in options:
         if opt in ('-h', '--help'):
@@ -602,11 +640,15 @@ def main():
             if arg:
                 ripper.save_progress = int(arg)
 
+    run_ripper(ripper, deviants, gallery, scraps, favs, collection, album, query, category)
+
+
+def run_ripper(ripper, deviants, gallery=False, scraps=False, favs=False, collections=None, albums=None, queries=None, categories=None):
     print(Dagr.NAME + " v" + Dagr.__version__ + " - deviantArt gallery ripper")
     if deviants == []:
         print("No deviants entered. Exiting.")
         sys.exit()
-    if not any([gallery, scraps, favs, collection, album, query, category]):
+    if not any([gallery, scraps, favs, collections, albums, queries, categories]):
         print("Nothing to do. Exiting.")
         sys.exit()
 
@@ -614,14 +656,8 @@ def main():
     ripper.start()
 
     for deviant in deviants:
-        group = False
         try:
-            html = ripper.get('https://www.deviantart.com/' + deviant + '/')
-            deviant = re.search(r'<title>.[A-Za-z0-9-]*', html,
-                                re.IGNORECASE).group(0)[7:]
-            deviant = re.sub('[^a-zA-Z0-9_-]+', '', deviant)
-            if re.search('<dt class="f h">Group</dt>', html):
-                group = True
+            deviant, group = get_deviant(ripper, deviant)
         except DagrException:
             print("Deviant " + deviant + " not found or deactivated!")
             continue
@@ -640,7 +676,7 @@ def main():
                 ripper.group_get("gallery")
             if favs:
                 ripper.group_get("favs")
-            if any([scraps, collection, album, query]):
+            if any([scraps, collections, albums, queries]):
                 print("Unsupported modes for groups were ignored")
         else:
             if gallery:
@@ -649,14 +685,26 @@ def main():
                 ripper.deviant_get("scraps")
             if favs:
                 ripper.deviant_get("favs")
-            if collection:
-                ripper.deviant_get("collection", mode_arg=collection)
-            if album:
-                ripper.deviant_get("album", mode_arg=album)
-            if query:
-                ripper.deviant_get("query", mode_arg=query)
-            if category:
-                ripper.deviant_get("category", mode_arg=category)
+            if collections:
+                if isinstance(collections, str):
+                    collections = [collections]
+                for collection in collections:
+                    ripper.deviant_get("collection", mode_arg=collection)
+            if albums:
+                if isinstance(albums, str):
+                    albums = [albums]
+                for album in albums:
+                    ripper.deviant_get("album", mode_arg=album)
+            if queries:
+                if isinstance(queries, str):
+                    queries = [queries]
+                for query in queries:
+                    ripper.deviant_get("query", mode_arg=query)
+            if categories:
+                if isinstance(categories, str):
+                    categories = [categories]
+                for category in categories:
+                    ripper.deviant_get("category", mode_arg=category)
     print("Job complete.")
 
     ripper.print_errors()
