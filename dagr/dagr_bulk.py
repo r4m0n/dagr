@@ -17,7 +17,7 @@ class DagrBulkConfig():
 def main():
     config = DagrBulkConfig()
     ripper = dagr.Dagr()
-    ripper.retry_exception_names = ['OSError']
+    ripper.retry_exception_names = ['OSError', 'ChunkedEncodingError']
     for deviant, albums in config.albums.items():
         run_ripper(ripper, [deviant], albums=albums)
     for deviant, collections in config.collections.items():
