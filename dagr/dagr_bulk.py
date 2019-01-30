@@ -29,7 +29,7 @@ def main():
     if config.galleries:
         run_ripper(ripper, config.galleries, galleries=True)
     if config.scraps:
-        run_ripper(ripper, config.galleries, scraps=True)
+        run_ripper(ripper, config.scraps, scraps=True)
     if config.favs:
         run_ripper(ripper, config.favs, favs=True)
     ripper.print_errors()
