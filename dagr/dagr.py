@@ -643,6 +643,7 @@ def main():
                 ripper.save_progress = int(arg)
 
     run_ripper(ripper, deviants, gallery, scraps, favs, collection, album, query, category)
+    ripper.print_errors()
 
 
 def run_ripper(ripper, deviants, gallery=False, scraps=False, favs=False, collections=None, albums=None, queries=None, categories=None):
@@ -708,8 +709,6 @@ def run_ripper(ripper, deviants, gallery=False, scraps=False, favs=False, collec
                 for category in categories:
                     ripper.deviant_get("category", mode_arg=category)
     print("Job complete.")
-
-    ripper.print_errors()
 
 
 if __name__ == "__main__":
