@@ -1,5 +1,5 @@
 import dagr, json, traceback
-from dagr import run_ripper
+from dagr import run_ripper, add_mimetype
 
 class DagrBulkConfig():
     def __init__(self):
@@ -15,6 +15,7 @@ class DagrBulkConfig():
             self.__dict__.update(json.load(filehandle))
 
 def main():
+    add_mimetype('binary/octet-stream', '.bin')
     config = DagrBulkConfig()
     ripper = dagr.Dagr()
     ripper.retry_exception_names = ['OSError', 'ChunkedEncodingError']
