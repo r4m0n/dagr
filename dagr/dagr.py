@@ -253,8 +253,8 @@ class Dagr:
             if filesearch:
                 filelink = filesearch['src']
 
-        if current_page.find(
-                "span", {"itemprop": "title"}).text == "Literature":
+        page_title = current_page.find("span", {"itemprop": "title"})
+        if page_title and page_title.text == "Literature":
             filelink = self.browser.get_url()
             return (filename, filelink)
 
