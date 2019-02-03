@@ -21,16 +21,16 @@ def main():
     ripper.retry_exception_names = ['OSError', 'ChunkedEncodingError']
     for deviant, albums in config.albums.items():
         run_ripper(ripper, [deviant], albums=albums)
+    if config.galleries:
+        run_ripper(ripper, config.galleries, galleries=True)
+    if config.scraps:
+        run_ripper(ripper, config.scraps, scraps=True)
     for deviant, collections in config.collections.items():
        run_ripper(ripper, [deviant], collections=collections)
     for deviant, queries in config.queries.items():
         run_ripper(ripper, [deviant], queries=queries)
     for deviant, category in config.categories.items():
         run_ripper(ripper, [deviant], categories=category)
-    if config.galleries:
-        run_ripper(ripper, config.galleries, galleries=True)
-    if config.scraps:
-        run_ripper(ripper, config.scraps, scraps=True)
     if config.favs:
         run_ripper(ripper, config.favs, favs=True)
     ripper.print_errors()
