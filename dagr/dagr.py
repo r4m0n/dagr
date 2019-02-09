@@ -414,7 +414,7 @@ class Dagr:
 
             if not self.test_only:
                 try:
-                   file_names.append(self.get(filelink, path_join(base_dir, filename)))
+                   self.get(filelink, path_join(base_dir, filename))
                 except DagrException as get_error:
                     self.handle_download_error(link, get_error)
                     continue
