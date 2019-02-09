@@ -11,6 +11,7 @@ class DagrBulkConfig():
         self.galleries = []
         self.scraps = []
         self.categories = {}
+        self.searches = []
         with open('dagr_bulk.json', 'r') as filehandle:
             self.__dict__.update(json.load(filehandle))
 
@@ -19,6 +20,9 @@ def main():
     config = DagrBulkConfig()
     ripper = dagr.Dagr()
     ripper.retry_exception_names = ['OSError', 'ChunkedEncodingError']
+    for query in config.searches:
+        ripper.start()
+        ripper.global_search(query)
     for deviant, albums in config.albums.items():
         run_ripper(ripper, [deviant], albums=albums)
     if config.galleries:

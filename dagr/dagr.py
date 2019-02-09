@@ -22,9 +22,9 @@ from mimetypes import (
     add_type as add_mimetype,
     init as mimetypes_init
     )
-from os import getcwd, makedirs, rename, utime
+from os import getcwd, makedirs, rename, utime, remove as os_remove
 from os.path import (
-    abspath, basename, exists as path_exists,
+    abspath, basename, dirname, exists as path_exists,
     expanduser, join as path_join
     )
 from random import choice
@@ -158,9 +158,9 @@ class Dagr:
 
     def get(self, url, file_name=None):
         if (file_name and not self.overwrite):
-            glob_name = glob(file_name + ".*")
+            glob_name = next(iter(glob(file_name + ".*")), None)
             if glob_name:
-                print(glob_name[0], "exists - skipping")
+                print(glob_name, "exists - skipping")
                 return None
 
         get_resp = None
@@ -350,14 +350,18 @@ class Dagr:
 
             done = re.findall("(This section has no deviations yet!|"
                               "This collection has no items yet!|"
-                              "Sorry, we found no relevant results.)",
+                              "Sorry, we found no relevant results.|"
+                              "Sorry, we don't have that many results.)",
                               html, re.IGNORECASE | re.S)
 
             if done:
                 break
 
-            print(self.deviant + "'s " + mode + " page " +
-                  str(int((i / 24) + 1)) + " crawled...")
+            progress_msg = '{} page {} crawled...'.format(mode, int(i / 24) + 1)
+            if mode == 'search':
+                print(progress_msg)
+            else:
+                print("{}'s {}". format(self.deviant, progress_msg))
 
         if not self.reverse:
             pages.reverse()
@@ -365,9 +369,12 @@ class Dagr:
         return pages
 
     def get_images(self, mode, mode_arg, pages):
-        base_dir = self.directory + self.deviant + "/" + mode
+        if mode == 'search':
+            base_dir =  path_join(self.directory, mode)
+        else:
+            base_dir = path_join(self.directory, self.deviant, mode)
         if mode_arg:
-            base_dir += "/" + mode_arg
+            base_dir = path_join(base_dir, mode_arg)
 
         try:
             da_make_dirs(base_dir)
@@ -378,7 +385,7 @@ class Dagr:
         # Find previously downloaded pages
         existing_pages = []
         try:
-            with open(base_dir + "/.dagr_downloaded_pages", "r") as filehandle:
+            with open(path_join(base_dir, '.dagr_downloaded_pages'), "r") as filehandle:
                 existing_pages = json.load(filehandle)
         except FNF_ERROR:
             # May not exist (new directory, ...)
@@ -406,7 +413,7 @@ class Dagr:
 
             if not self.test_only:
                 try:
-                    self.get(filelink, base_dir + "/" + filename)
+                   file_names.append(self.get(filelink, path_join(base_dir, filename)))
                 except DagrException as get_error:
                     self.handle_download_error(link, get_error)
                     continue
@@ -417,14 +424,66 @@ class Dagr:
                 print(filelink)
         if pages:
             self.update_pages_cache(base_dir, existing_pages)
+            self.update_index(base_dir, existing_pages)
+
+    def update_index(self, base_dir, existing_pages):
+        if self.verbose:
+            print('Updating index')
+
+        def format_hyperlink(link):
+            return '<a href="{}">{}</a>'.format(link,link)
+
+        index_file = path_join(base_dir, 'index1.html')
+        artists_file = path_join(base_dir, '.artists')
+        filenames_list = path_join(base_dir, '.filenames')
+
+        file_names = glob(path_join(base_dir, '*'))
+
+        with open(filenames_list, 'w') as filehandle:
+            json.dump(file_names, filehandle, indent=4, sort_keys=True)
+
+        data = {}
+
+        for page in existing_pages:
+            artist_url = dirname(dirname(page))
+            artist_name = basename(artist_url)
+            url_basename = basename(page)
+            real_filename = next(basename(fn) for fn in file_names if url_basename in fn)
+            if not artist_name in data:
+                data[artist_name] = {'Home Page': format_hyperlink(artist_url), 'Artworks':{}}
+            data[artist_name]['Artworks'][format_hyperlink(real_filename)] = format_hyperlink(page)
+        with open(artists_file, 'w') as filehandle:
+            json.dump(data, filehandle, indent=4, sort_keys=True)
+        try:
+            from  json2html import Json2Html
+            with open(index_file, 'w') as filehandle:
+                filehandle.write(Json2Html().convert(data,escape=False))
+        except (ImportError):
+            pass
 
 
     def update_pages_cache(self, base_dir, existing_pages):
         # Update downloaded pages cache
         if self.verbose:
             print('Saving progress')
-        with open(base_dir + "/.dagr_downloaded_pages", "w") as filehandle:
-            json.dump(existing_pages, filehandle)
+        cache_file = path_join(base_dir, '.dagr_downloaded_pages')
+        cache_file_backup = cache_file + '.bak'
+        if path_exists(cache_file):
+            if path_exists(cache_file_backup):
+                os_remove(cache_file_backup)
+            rename(cache_file, cache_file_backup)
+        with open(cache_file, 'w') as filehandle:
+            json.dump(existing_pages, filehandle, indent=4, sort_keys=True)
+
+    def global_search(self, query):
+        base_url = 'https://www.deviantart.com/?q=' + query  + '&offset='
+        pages = self.get_pages('search', base_url)
+        if not pages:
+            print('No search results for query {}'.format(query))
+            return
+        print('Total search results found for {} : {}'.format(query, len(pages)))
+        self.get_images('search', query, pages)
+        print('Query successfully ripped.')
 
     def deviant_get(self, mode, mode_arg=None):
         print("Ripping " + self.deviant + "'s " + mode + "...")
@@ -647,12 +706,12 @@ def main():
     ripper.print_errors()
 
 
-def run_ripper(ripper, deviants, gallery=False, scraps=False, favs=False, collections=None, albums=None, queries=None, categories=None):
+def run_ripper(ripper, deviants, galleries=False, scraps=False, favs=False, collections=None, albums=None, queries=None, categories=None):
     print(Dagr.NAME + " v" + Dagr.__version__ + " - deviantArt gallery ripper")
     if deviants == []:
         print("No deviants entered. Exiting.")
         sys.exit()
-    if not any([gallery, scraps, favs, collections, albums, queries, categories]):
+    if not any([galleries, scraps, favs, collections, albums, queries, categories]):
         print("Nothing to do. Exiting.")
         sys.exit()
 
@@ -676,14 +735,14 @@ def run_ripper(ripper, deviants, gallery=False, scraps=False, favs=False, collec
 
         ripper.deviant = deviant
         if group:
-            if gallery:
+            if galleries:
                 ripper.group_get("gallery")
             if favs:
                 ripper.group_get("favs")
             if any([scraps, collections, albums, queries]):
                 print("Unsupported modes for groups were ignored")
         else:
-            if gallery:
+            if galleries:
                 ripper.deviant_get("gallery")
             if scraps:
                 ripper.deviant_get("scraps")
