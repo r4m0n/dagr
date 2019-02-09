@@ -101,6 +101,7 @@ class Dagr:
         add_mimetype('application/x-7z-compressed', '.7z')
         add_mimetype('application/x-lha', '.lzh')
         add_mimetype('application/zip', '.zip')
+        add_mimetype('image/x-ms-bmp', '.bmp')
 
     def load_configuration(self):
         my_conf = configparser.ConfigParser()
