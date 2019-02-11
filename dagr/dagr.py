@@ -438,7 +438,8 @@ class Dagr:
         artists_file = path_join(base_dir, '.artists')
         filenames_list = path_join(base_dir, '.filenames')
 
-        file_names = glob(path_join(base_dir, '*'))
+        file_names_raw = glob(path_join(base_dir, '*'))
+        file_names = [basename(fn) for fn in file_names]
 
         with open(filenames_list, 'w') as filehandle:
             json.dump(file_names, filehandle, indent=4, sort_keys=True)
@@ -449,7 +450,7 @@ class Dagr:
             artist_url = dirname(dirname(page))
             artist_name = basename(artist_url)
             url_basename = basename(page)
-            real_filename = next(basename(fn) for fn in file_names if url_basename in fn)
+            real_filename = next(fn for fn in file_names if url_basename in fn)
             if not artist_name in data:
                 data[artist_name] = {'Home Page': format_hyperlink(artist_url), 'Artworks':{}}
             data[artist_name]['Artworks'][format_hyperlink(real_filename)] = format_hyperlink(page)
