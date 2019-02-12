@@ -222,30 +222,29 @@ class Dagr:
         if not file_name:
             return response.text
 
-        if file_name:
-            content_type = self.response_get_content_type(response)
-            if self.verbose:
-                print(content_type)
-            if not content_type:
-                raise DagrException('missing content-type')
-            file_ext = guess_extension(content_type)
-            if not file_ext:
-                raise DagrException('unknown content-type - ' + content_type)
-            file_name += file_ext
-            file_exists = path_exists(file_name)
+        content_type = self.response_get_content_type(response)
+        if self.verbose:
+            print(content_type)
+        if not content_type:
+            raise DagrException('missing content-type')
+        file_ext = guess_extension(content_type)
+        if not file_ext:
+            raise DagrException('unknown content-type - ' + content_type)
+        file_name += file_ext
+        file_exists = path_exists(file_name)
 
-            if file_exists and not self.overwrite:
-                files_list.append(file_name)
-                return None
+        if file_exists and not self.overwrite:
+            files_list.append(file_name)
+            print(file_name, "exists - skipping")
+            return None
 
         if response.headers.get("last-modified"):
             # Set file dates to last modified time
             mod_time = mktime(parsedate(response.headers.get("last-modified")))
             utime(file_name, (mod_time, mod_time))
 
-        if file_name and not file_exists or file_exists and self.overwrite:
-            with open(file_name, "wb") as local_file:
-                local_file.write(response.content)
+        with open(file_name, "wb") as local_file:
+            local_file.write(response.content)
 
         files_list.append(file_name)
         return file_name
@@ -477,8 +476,8 @@ class Dagr:
         print("Total deviations to download: " + str(len(pages)))
         for count, link in enumerate(pages, start=1):
             if self.save_progress and count % self.save_progress == 0:
-                self.update_downloaded_pages(base_dir, existing_pages)
-                self.update_filenames(base_dir, files_list)
+                self.update_cache(base_dir, fn_cache,files_list)
+                self.update_cache(base_dir, dp_cache, existing_pages)
             if self.verbose:
                 print("Downloading " + str(count) + " of " +
                       str(len(pages)) + " ( " + link + " )")
@@ -502,10 +501,10 @@ class Dagr:
                         existing_pages.append(link)
             else:
                 print(filelink)
-        if pages or (not path_exists(path_join(base_dir, self.cache.file_names)) and files_list):
-            self.update_cache(base_dir, self.cache.file_names, files_list)
+        if pages or (not path_exists(path_join(base_dir, fn_cache)) and files_list):
+            self.update_cache(base_dir, fn_cache, files_list)
         if pages:
-            self.update_cache(base_dir, self.cache.downloaded_pages, existing_pages)
+            self.update_cache(base_dir, dp_cache, existing_pages)
         if pages or (
                 not path_exists(path_join(base_dir, self.cache.artists))
                 and existing_pages):
