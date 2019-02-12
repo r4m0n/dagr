@@ -175,6 +175,9 @@ class Dagr:
 
 
     def get_content_ext(self, url):
+        if isinstance(url, Tag):
+            link = self.browser._find_link(link)
+            url = self.absolute_url(link['href'])
         head_resp = self.browser.session.head(url)
         if head_resp.headers.get("content-type"):
             return next(iter(head_resp.headers.get("content-type").split(";")), None)
