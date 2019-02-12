@@ -203,7 +203,7 @@ class Dagr:
 
             if file_exists and not self.overwrite:
                 files_list.append(new_name)
-                return new_name
+                return None
 
         get_resp = None
         tries = {}
