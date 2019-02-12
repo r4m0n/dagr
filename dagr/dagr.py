@@ -509,9 +509,9 @@ class Dagr:
             else:
                 print(filelink)
         if pages or (not path_exists(path_join(base_dir, self.cache.file_names)) and files_list):
-            self.filenames_path(base_dir,self.cache.file_names, files_list)
+            self.update_cache(base_dir, self.cache.file_names, files_list)
         if pages:
-            self.update_downloaded_pages(base_dir, existing_pages)
+            self.update_cache(base_dir, self.cache.downloaded_pages, existing_pages)
         if pages or (
                 not path_exists(path_join(base_dir, self.cache.artists))
                 and existing_pages):
