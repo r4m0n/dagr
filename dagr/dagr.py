@@ -174,53 +174,32 @@ class Dagr:
                                        user_agent=choice(user_agents))
 
 
-    def get_content_ext(self, url, *args, **kwargs):
+    def get_response(self, url, *args, **kwargs):
         if isinstance(url, Tag):
             if hasattr(url, 'attrs') and 'href' in url.attrs:
                 url = self.browser.absolute_url(url['href'])
-        head_resp = self.browser.session.head(url)
-        if head_resp.headers.get("content-type"):
-            return next(iter(head_resp.headers.get("content-type").split(";")), None)
+        return self.browser.session.get(url)
+
+    def response_get_content_type(self, response):
+        if "content-type" in response.headers:
+            return next(iter(response.headers.get("content-type").split(";")), None)
 
 
     def get(self, url, file_name=None, files_list=None):
-        if file_name and files_list == None:
+        if file_name and files_list is None:
             raise ValueError('files_list cannot be empty when file_name is specified')
         if (file_name and not self.overwrite):
-            glob_name = next((fn for fn in files_list if file_name in fn), None)
+            glob_name = next((fn for fn in files_list if basename(file_name) in fn), None)
             if glob_name:
                 print(glob_name, "exists - skipping")
                 return None
 
-        new_name = None
-
-        if file_name:
-            content_type = self.get_content_ext(url)
-            if content_type:
-                file_ext = guess_extension(content_type)
-                if file_ext:
-                    new_name = file_name + file_ext
-                    file_exists = path_exists(new_name)
-                else:
-                    raise DagrException('unknown content-type - ' + content_type)
-
-            if file_exists and not self.overwrite:
-                files_list.append(new_name)
-                return None
-
-        get_resp = None
+        response = None
         tries = {}
+
         while True:
             try:
-                if isinstance(url, Tag):
-                    # Download and save soup links
-                    get_resp = self.browser.download_link(url, file_name)
-                else:
-                    # Direct URL
-                    get_resp = self.browser.session.get(url)
-                    if file_name:
-                        with open(file_name, "wb") as local_file:
-                            local_file.write(get_resp.content)
+                response = self.get_response(url)
                 break
             except Exception as ex:
                 if self.verbose:
@@ -236,25 +215,40 @@ class Dagr:
                 else:
                     raise ex
 
-        if get_resp.status_code != req_codes.ok:
+        if response.status_code != req_codes.ok:
             raise DagrException("incorrect status code - " +
-                                str(get_resp.status_code))
+                                str(response.status_code))
 
-        if file_name is None:
-            return get_resp.text
+        if not file_name:
+            return response.text
 
-        if get_resp.headers.get("last-modified"):
+        if file_name:
+            content_type = self.response_get_content_type(response)
+            if self.verbose:
+                print(content_type)
+            if not content_type:
+                raise DagrException('missing content-type')
+            file_ext = guess_extension(content_type)
+            if not file_ext:
+                raise DagrException('unknown content-type - ' + content_type)
+            file_name += file_ext
+            file_exists = path_exists(file_name)
+
+            if file_exists and not self.overwrite:
+                files_list.append(file_name)
+                return None
+
+        if response.headers.get("last-modified"):
             # Set file dates to last modified time
-            mod_time = mktime(parsedate(get_resp.headers.get("last-modified")))
+            mod_time = mktime(parsedate(response.headers.get("last-modified")))
             utime(file_name, (mod_time, mod_time))
 
-            if new_name:
-                if file_exists and self.overwrite:
-                    os_remove(new_name)
-                rename(file_name, new_name)
+        if file_name and not file_exists or file_exists and self.overwrite:
+            with open(file_name, "wb") as local_file:
+                local_file.write(response.content)
 
-        files_list.append(new_name)
-        return new_name
+        files_list.append(file_name)
+        return file_name
 
     def find_link(self, link):
         filelink = None
@@ -517,7 +511,7 @@ class Dagr:
                 and existing_pages):
             self.update_artists(base_dir, existing_pages, files_list)
 
-    def backup_cache_file(file_name):
+    def backup_cache_file(self, file_name):
         backup_name = file_name + '.bak'
         if path_exists(file_name):
             if path_exists(backup_name):
