@@ -174,10 +174,10 @@ class Dagr:
                                        user_agent=choice(user_agents))
 
 
-    def get_content_ext(self, url):
+    def get_content_ext(self, url, *args, **kwargs):
         if isinstance(url, Tag):
-            link = self.browser.find_link(url)
-            url = self.absolute_url(link['href'])
+            if hasattr(url, 'attrs') and 'href' in url.attrs:
+                url = self.browser.absolute_url(url['href'])
         head_resp = self.browser.session.head(url)
         if head_resp.headers.get("content-type"):
             return next(iter(head_resp.headers.get("content-type").split(";")), None)
