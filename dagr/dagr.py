@@ -64,6 +64,13 @@ class DagrException(Exception):
         return str(self.parameter)
 
 
+class CacheSettings():
+    def __init__(self):
+        self.file_names = '.filenames'
+        self.downloaded_pages = '.dagr_downloaded_pages'
+        self.artists = '.artists'
+
+
 class Dagr:
     """deviantArt gallery ripper class"""
 
@@ -89,6 +96,7 @@ class Dagr:
         self.save_progress = None
         self.debug = False
         self.retry_exception_names = {}
+        self.cache = CacheSettings()
 
         # Current status
         self.deviant = ""
@@ -126,6 +134,14 @@ class Dagr:
             self.verbose = my_conf.getboolean("Dagr", "Verbose")
         if my_conf.has_option("Dagr", "Debug"):
             self.debug = my_conf.getboolean("Dagr", "Debug")
+        if my_conf.has_option("Dagr.Cache", "FileNames"):
+            self.cache.file_names = my_conf.get("Dagr.Cache", "FileNames")
+        if my_conf.has_option("Dagr.Cache", "DownloadedPages"):
+            self.cache.downloaded_pages = my_conf.get("Dagr.Cache", "DownloadedPages")
+        if my_conf.has_option("Dagr.Cache", "Artists"):
+            self.cache.artists = my_conf.get("Dagr.Cache", "Artists")
+        if my_conf.has_option("Dagr.Cache", "IndexFile"):
+            self.cache.index_file = my_conf.get("Dagr.Cache", "IndexFile")
 
     def start(self):
         if not self.browser:
@@ -157,12 +173,37 @@ class Dagr:
         self.browser = StatefulBrowser(session=session,
                                        user_agent=choice(user_agents))
 
-    def get(self, url, file_name=None):
+
+    def get_content_ext(self, url):
+        head_resp = self.browser.session.head(url)
+        if head_resp.headers.get("content-type"):
+            return next(iter(head_resp.headers.get("content-type").split(";")), None)
+
+
+    def get(self, url, file_name=None, files_list=None):
+        if file_name and files_list == None:
+            raise ValueError('files_list cannot be empty when file_name is specified')
         if (file_name and not self.overwrite):
-            glob_name = next(iter(glob(file_name + ".*")), None)
+            glob_name = next((fn for fn in files_list if file_name in fn), None)
             if glob_name:
                 print(glob_name, "exists - skipping")
                 return None
+
+        new_name = None
+
+        if file_name:
+            content_type = self.get_content_ext(url)
+            if content_type:
+                file_ext = guess_extension(content_type)
+                if file_ext:
+                    new_name = file_name + file_ext
+                    file_exists = path_exists(new_name)
+                else:
+                    raise DagrException('unknown content-type - ' + content_type)
+
+            if file_exists and not self.overwrite:
+                files_list.append(new_name)
+                return new_name
 
         get_resp = None
         tries = {}
@@ -204,15 +245,13 @@ class Dagr:
             mod_time = mktime(parsedate(get_resp.headers.get("last-modified")))
             utime(file_name, (mod_time, mod_time))
 
-        if get_resp.headers.get("content-type"):
-            content_type = get_resp.headers.get("content-type").split(";")[0]
-            file_ext = guess_extension(content_type)
-            if file_ext:
-                rename(file_name, file_name + file_ext)
-            else:
-                raise DagrException('unknown content-type - ' + content_type)
+            if new_name:
+                if file_exists and self.overwrite:
+                    os_remove(new_name)
+                rename(file_name, new_name)
 
-        return file_name
+        files_list.append(new_name)
+        return new_name
 
     def find_link(self, link):
         filelink = None
@@ -292,12 +331,12 @@ class Dagr:
         except (ImportError, StopIteration):
             pass
 
-    def filter_page_scripts(self, current_page, filter):
+    def filter_page_scripts(self, current_page, filt):
         return next(content for content in
                     (script.get_text() for script in
                             current_page.find_all('script', {'type':'text/javascript'})
                         if not script.has_attr('src'))
-                    if content and filter in content)
+                    if content and filt in content)
 
     def extract_nested_assign(self, node, identifiers):
         from calmjs.parse import es5 as calmjs_es5
@@ -369,6 +408,54 @@ class Dagr:
 
         return pages
 
+    def load_cache_file(self, base_dir, cache_file):
+        full_path = path_join(base_dir, cache_file)
+        try:
+            if path_exists(full_path):
+                with open(full_path, 'r') as filehandle:
+                    return json.load(filehandle)
+            else:
+                if self.verbose:
+                    print('Primary {} cache not found'.format(cache_file))
+        except:
+            print('Unable to load primary {} cache:'.format(cache_file))
+            traceback.print_exc()
+        full_path += '.bak'
+        try:
+            if path_exists(full_path):
+                with open(full_path, 'r') as filehandle:
+                    return json.load(filehandle)
+            else:
+                if self.verbose:
+                    print('Backup {} cache not found'.format(cache_file))
+        except:
+            print('Unable to load backup {} cache:'.format(cache_file))
+            traceback.print_exc()
+
+    def load_cache(self, base_dir, **kwargs):
+        def filenames():
+            if self.verbose:
+                print('Building filenames cache')
+            files_list_raw = glob(path_join(base_dir, '*'))
+            return [basename(fn) for fn in files_list_raw]
+        def downloaded_pages():
+            return []
+        def artists():
+            return {}
+        cache_defaults = {
+            'filenames': filenames,
+            'downloaded_pages': downloaded_pages,
+            'artists': artists
+        }
+        for cache_type, cache_file in kwargs.items():
+            cache_contents = self.load_cache_file(base_dir, cache_file)
+            if cache_contents:
+                yield cache_contents
+            else:
+                if not cache_type in cache_defaults:
+                    raise ValueError('Unkown cache type: {}'.format(cache_type))
+                yield cache_defaults[cache_type]()
+
     def get_images(self, mode, mode_arg, pages):
         if mode == 'search':
             base_dir =  path_join(self.directory, mode)
@@ -376,29 +463,25 @@ class Dagr:
             base_dir = path_join(self.directory, self.deviant, mode)
         if mode_arg:
             base_dir = path_join(base_dir, mode_arg)
-
         try:
             da_make_dirs(base_dir)
         except OSError as mkdir_error:
             print(str(mkdir_error))
             return
-
-        # Find previously downloaded pages
-        existing_pages = []
-        try:
-            with open(path_join(base_dir, '.dagr_downloaded_pages'), "r") as filehandle:
-                existing_pages = json.load(filehandle)
-        except FNF_ERROR:
-            # May not exist (new directory, ...)
-            if self.verbose:
-                print('.dagr_downloaded_pages not found')
+        #Load caches
+        fn_cache =  self.cache.file_names
+        dp_cache = self.cache.downloaded_pages
+        files_list, existing_pages = self.load_cache(base_dir,
+            filenames = fn_cache,
+            downloaded_pages = dp_cache
+        )
         if not self.overwrite:
             pages = [x for x in pages if x not in existing_pages]
-
         print("Total deviations to download: " + str(len(pages)))
         for count, link in enumerate(pages, start=1):
             if self.save_progress and count % self.save_progress == 0:
-                self.update_pages_cache(base_dir, existing_pages)
+                self.update_downloaded_pages(base_dir, existing_pages)
+                self.update_filenames(base_dir, files_list)
             if self.verbose:
                 print("Downloading " + str(count) + " of " +
                       str(len(pages)) + " ( " + link + " )")
@@ -411,10 +494,9 @@ class Dagr:
             except DagrException as link_error:
                 self.handle_download_error(link, link_error)
                 continue
-
             if not self.test_only:
                 try:
-                   self.get(filelink, path_join(base_dir, filename))
+                    self.get(filelink, path_join(base_dir, filename), files_list)
                 except DagrException as get_error:
                     self.handle_download_error(link, get_error)
                     continue
@@ -423,59 +505,41 @@ class Dagr:
                         existing_pages.append(link)
             else:
                 print(filelink)
+        if pages or (not path_exists(path_join(base_dir, self.cache.file_names)) and files_list):
+            self.filenames_path(base_dir,self.cache.file_names, files_list)
         if pages:
-            self.update_pages_cache(base_dir, existing_pages)
-            self.update_index(base_dir, existing_pages)
+            self.update_downloaded_pages(base_dir, existing_pages)
+        if pages or (
+                not path_exists(path_join(base_dir, self.cache.artists))
+                and existing_pages):
+            self.update_artists(base_dir, existing_pages, files_list)
 
-    def update_index(self, base_dir, existing_pages):
+    def backup_cache_file(file_name):
+        backup_name = file_name + '.bak'
+        if path_exists(file_name):
+            if path_exists(backup_name):
+                os_remove(backup_name)
+            rename(file_name, backup_name)
+
+    def update_cache(self, base_dir, cache_file, cache_contents):
+        full_path = path_join(base_dir, cache_file)
+        self.backup_cache_file(full_path)
         if self.verbose:
-            print('Updating index')
+            print('Updating {} cache'.format(cache_file))
+        with open(full_path, 'w') as filehandle:
+            json.dump(cache_contents, filehandle, indent=4, sort_keys=True)
 
-        def format_hyperlink(link):
-            return '<a href="{}">{}</a>'.format(link,link)
-
-        index_file = path_join(base_dir, 'index1.html')
-        artists_file = path_join(base_dir, '.artists')
-        filenames_list = path_join(base_dir, '.filenames')
-
-        file_names_raw = glob(path_join(base_dir, '*'))
-        file_names = [basename(fn) for fn in file_names]
-
-        with open(filenames_list, 'w') as filehandle:
-            json.dump(file_names, filehandle, indent=4, sort_keys=True)
-
-        data = {}
-
-        for page in existing_pages:
+    def update_artists(self, base_dir, pages, files_list):
+        artists = {}
+        for page in pages:
             artist_url = dirname(dirname(page))
             artist_name = basename(artist_url)
             url_basename = basename(page)
-            real_filename = next(fn for fn in file_names if url_basename in fn)
-            if not artist_name in data:
-                data[artist_name] = {'Home Page': format_hyperlink(artist_url), 'Artworks':{}}
-            data[artist_name]['Artworks'][format_hyperlink(real_filename)] = format_hyperlink(page)
-        with open(artists_file, 'w') as filehandle:
-            json.dump(data, filehandle, indent=4, sort_keys=True)
-        try:
-            from  json2html import Json2Html
-            with open(index_file, 'w') as filehandle:
-                filehandle.write(Json2Html().convert(data,escape=False))
-        except (ImportError):
-            pass
-
-
-    def update_pages_cache(self, base_dir, existing_pages):
-        # Update downloaded pages cache
-        if self.verbose:
-            print('Saving progress')
-        cache_file = path_join(base_dir, '.dagr_downloaded_pages')
-        cache_file_backup = cache_file + '.bak'
-        if path_exists(cache_file):
-            if path_exists(cache_file_backup):
-                os_remove(cache_file_backup)
-            rename(cache_file, cache_file_backup)
-        with open(cache_file, 'w') as filehandle:
-            json.dump(existing_pages, filehandle, indent=4, sort_keys=True)
+            real_filename = next(fn for fn in files_list if url_basename in fn)
+            if not artist_name in artists:
+                artists[artist_name] = {'Home Page': artist_url, 'Artworks':{}}
+            artists[artist_name]['Artworks'][real_filename] = page
+        self.update_cache(base_dir, self.cache.artists, artists)
 
     def global_search(self, query):
         base_url = 'https://www.deviantart.com/?q=' + query  + '&offset='
