@@ -553,7 +553,7 @@ class Dagr:
                 try:
                     real_filename = next(fn for fn in files_list if url_basename in fn)
                 except StopIteration as ex:
-                    print(page, url_basename, real_filename)
+                    print(page, url_basename)
                     raise ex
                 if not artist_name in artists:
                     artists[artist_name] = {'Home Page': artist_url, 'Artworks':{}}
