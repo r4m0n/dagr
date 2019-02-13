@@ -178,7 +178,7 @@ class Dagr:
         if isinstance(url, Tag):
             if hasattr(url, 'attrs') and 'href' in url.attrs:
                 url = self.browser.absolute_url(url['href'])
-        return self.browser.session.get(url)
+        return self.browser.session.get(url, timeout=150)
 
     def response_get_content_type(self, response):
         if "content-type" in response.headers:
@@ -215,7 +215,7 @@ class Dagr:
                 else:
                     raise ex
 
-        if response.status_code != req_codes.ok:
+        if not response.status_code == req_codes.ok:
             raise DagrException("incorrect status code - " +
                                 str(response.status_code))
 
@@ -231,22 +231,39 @@ class Dagr:
         if not file_ext:
             raise DagrException('unknown content-type - ' + content_type)
         file_name += file_ext
+        file_name = abspath(file_name)
         file_exists = path_exists(file_name)
 
         if file_exists and not self.overwrite:
-            files_list.append(file_name)
+            files_list.append(basename(file_name))
             print(file_name, "exists - skipping")
             return None
+
+        while True:
+            try:
+                with open(file_name, "wb") as local_file:
+                    local_file.write(response.content)
+                break
+            except Exception as ex:
+                if self.verbose:
+                    traceback.print_exc()
+                except_name = type(ex).__name__
+                if except_name in self.retry_exception_names:
+                    if not except_name in tries:
+                        tries[except_name] = 0
+                    tries[except_name] += 1
+                    if tries[except_name]  < 3:
+                        continue
+                    raise DagrException('Failed to get url: {}'.format(except_name))
+                else:
+                    raise ex
 
         if response.headers.get("last-modified"):
             # Set file dates to last modified time
             mod_time = mktime(parsedate(response.headers.get("last-modified")))
             utime(file_name, (mod_time, mod_time))
 
-        with open(file_name, "wb") as local_file:
-            local_file.write(response.content)
-
-        files_list.append(file_name)
+        files_list.append(basename(file_name))
         return file_name
 
     def find_link(self, link):
@@ -415,7 +432,8 @@ class Dagr:
                     print('Primary {} cache not found'.format(cache_file))
         except:
             print('Unable to load primary {} cache:'.format(cache_file))
-            traceback.print_exc()
+            if self.verbose:
+                traceback.print_exc()
         full_path += '.bak'
         try:
             if path_exists(full_path):
@@ -426,7 +444,8 @@ class Dagr:
                     print('Backup {} cache not found'.format(cache_file))
         except:
             print('Unable to load backup {} cache:'.format(cache_file))
-            traceback.print_exc()
+            if self.verbose:
+                traceback.print_exc()
 
     def load_cache(self, base_dir, **kwargs):
         def filenames():
@@ -528,13 +547,17 @@ class Dagr:
     def update_artists(self, base_dir, pages, files_list):
         artists = {}
         for page in pages:
-            artist_url = dirname(dirname(page))
-            artist_name = basename(artist_url)
-            url_basename = basename(page)
-            real_filename = next(fn for fn in files_list if url_basename in fn)
-            if not artist_name in artists:
-                artists[artist_name] = {'Home Page': artist_url, 'Artworks':{}}
-            artists[artist_name]['Artworks'][real_filename] = page
+                artist_url = dirname(dirname(page))
+                artist_name = basename(artist_url)
+                url_basename = basename(page)
+                try:
+                    real_filename = next(fn for fn in files_list if url_basename in fn)
+                except StopIteration as ex:
+                    print(page, url_basename, real_filename)
+                    raise ex
+                if not artist_name in artists:
+                    artists[artist_name] = {'Home Page': artist_url, 'Artworks':{}}
+                artists[artist_name]['Artworks'][real_filename] = page
         self.update_cache(base_dir, self.cache.artists, artists)
 
     def global_search(self, query):
