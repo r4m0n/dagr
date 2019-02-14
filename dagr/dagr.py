@@ -492,7 +492,10 @@ class Dagr:
         base_dir = self.get_base_dir(mode, mode_arg)
         if base_dir:
             try:
-                with portalocker.TemporaryFileLock(path_join(base_dir, '.lock')):
+                with portalocker.TemporaryFileLock(
+                    filename=path_join(base_dir, '.lock'),
+                    fail_when_locked = True
+                    ):
                     #Load caches
                     fn_cache =  self.cache.file_names
                     dp_cache = self.cache.downloaded_pages
@@ -538,7 +541,7 @@ class Dagr:
                             not path_exists(path_join(base_dir, self.cache.artists))
                             and existing_pages):
                         self.update_artists(base_dir, existing_pages, files_list)
-            except portalocker.exceptions.LockException:
+            except (portalocker.exceptions.LockException,portalocker.exceptions.AlreadyLocked):
                 print('Skipping locked directory {}'.format(base_dir))
 
     def backup_cache_file(self, file_name):
