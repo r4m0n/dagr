@@ -14,6 +14,7 @@ import json
 import re
 import sys
 import traceback
+import portalocker
 from email.utils import parsedate
 from getopt import gnu_getopt, GetoptError
 from glob import glob
@@ -471,11 +472,11 @@ class Dagr:
                     raise ValueError('Unkown cache type: {}'.format(cache_type))
                 yield cache_defaults[cache_type]()
 
-    def get_images(self, mode, mode_arg, pages):
-        if mode == 'search':
-            base_dir =  path_join(self.directory, mode)
-        else:
+    def get_base_dir(self, mode, mode_arg=None):
+        if self.deviant:
             base_dir = path_join(self.directory, self.deviant, mode)
+        else:
+            base_dir =  path_join(self.directory, mode)
         if mode_arg:
             base_dir = path_join(base_dir, mode_arg)
         try:
@@ -483,51 +484,62 @@ class Dagr:
         except OSError as mkdir_error:
             print(str(mkdir_error))
             return
-        #Load caches
-        fn_cache =  self.cache.file_names
-        dp_cache = self.cache.downloaded_pages
-        files_list, existing_pages = self.load_cache(base_dir,
-            filenames = fn_cache,
-            downloaded_pages = dp_cache
-        )
-        if not self.overwrite:
-            pages = [x for x in pages if x not in existing_pages]
-        print("Total deviations to download: " + str(len(pages)))
-        for count, link in enumerate(pages, start=1):
-            if self.save_progress and count % self.save_progress == 0:
-                self.update_cache(base_dir, fn_cache,files_list)
-                self.update_cache(base_dir, dp_cache, existing_pages)
-            if self.verbose:
-                print("Downloading " + str(count) + " of " +
-                      str(len(pages)) + " ( " + link + " )")
-            filename = ""
-            filelink = ""
+        return base_dir
+
+
+
+    def get_images(self, mode, mode_arg, pages):
+        base_dir = self.get_base_dir(mode, mode_arg)
+        if base_dir:
             try:
-                filename, filelink = self.find_link(link)
-            except (KeyboardInterrupt, SystemExit):
-                raise
-            except DagrException as link_error:
-                self.handle_download_error(link, link_error)
-                continue
-            if not self.test_only:
-                try:
-                    self.get(filelink, path_join(base_dir, filename), files_list)
-                except DagrException as get_error:
-                    self.handle_download_error(link, get_error)
-                    continue
-                else:
-                    if link not in existing_pages:
-                        existing_pages.append(link)
-            else:
-                print(filelink)
-        if pages or (not path_exists(path_join(base_dir, fn_cache)) and files_list):
-            self.update_cache(base_dir, fn_cache, files_list)
-        if pages:
-            self.update_cache(base_dir, dp_cache, existing_pages)
-        if pages or (
-                not path_exists(path_join(base_dir, self.cache.artists))
-                and existing_pages):
-            self.update_artists(base_dir, existing_pages, files_list)
+                with portalocker.Lock(path_join(base_dir, '.lock')):
+                    #Load caches
+                    fn_cache =  self.cache.file_names
+                    dp_cache = self.cache.downloaded_pages
+                    files_list, existing_pages = self.load_cache(base_dir,
+                        filenames = fn_cache,
+                        downloaded_pages = dp_cache
+                    )
+                    if not self.overwrite:
+                        pages = [x for x in pages if x not in existing_pages]
+                    print("Total deviations to download: " + str(len(pages)))
+                    for count, link in enumerate(pages, start=1):
+                        if self.save_progress and count % self.save_progress == 0:
+                            self.update_cache(base_dir, fn_cache,files_list)
+                            self.update_cache(base_dir, dp_cache, existing_pages)
+                        if self.verbose:
+                            print("Downloading " + str(count) + " of " +
+                                str(len(pages)) + " ( " + link + " )")
+                        filename = ""
+                        filelink = ""
+                        try:
+                            filename, filelink = self.find_link(link)
+                        except (KeyboardInterrupt, SystemExit):
+                            raise
+                        except DagrException as link_error:
+                            self.handle_download_error(link, link_error)
+                            continue
+                        if not self.test_only:
+                            try:
+                                self.get(filelink, path_join(base_dir, filename), files_list)
+                            except DagrException as get_error:
+                                self.handle_download_error(link, get_error)
+                                continue
+                            else:
+                                if link not in existing_pages:
+                                    existing_pages.append(link)
+                        else:
+                            print(filelink)
+                    if pages or (not path_exists(path_join(base_dir, fn_cache)) and files_list):
+                        self.update_cache(base_dir, fn_cache, files_list)
+                    if pages:
+                        self.update_cache(base_dir, dp_cache, existing_pages)
+                    if pages or (
+                            not path_exists(path_join(base_dir, self.cache.artists))
+                            and existing_pages):
+                        self.update_artists(base_dir, existing_pages, files_list)
+            except portalocker.exceptions.LockException:
+                print('Skipping locked directory {}'.format(base_dir))
 
     def backup_cache_file(self, file_name):
         backup_name = file_name + '.bak'
@@ -815,8 +827,10 @@ def run_ripper(ripper, deviants, galleries=False, scraps=False, favs=False, coll
             print("Current deviant: " + deviant)
         try:
             da_make_dirs(ripper.directory + deviant)
-        except OSError as mkdir_error:
-            print(str(mkdir_error))
+        except OSError:
+            if ripper.verbose:
+                traceback.print_exec()
+            continue
 
         ripper.deviant = deviant
         if group:
