@@ -492,7 +492,7 @@ class Dagr:
         base_dir = self.get_base_dir(mode, mode_arg)
         if base_dir:
             try:
-                with portalocker.Lock(path_join(base_dir, '.lock')):
+                with portalocker.TemporaryFileLock(path_join(base_dir, '.lock')):
                     #Load caches
                     fn_cache =  self.cache.file_names
                     dp_cache = self.cache.downloaded_pages
