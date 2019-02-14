@@ -1,3 +1,6 @@
 .*.swp
 *.pyc
 *.json
+dist/*
+build/*
+*.egg-info/*
