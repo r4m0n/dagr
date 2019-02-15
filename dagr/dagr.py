@@ -517,22 +517,22 @@ class Dagr:
                         filelink = ""
                         try:
                             filename, filelink = self.find_link(link)
-                        except (KeyboardInterrupt, SystemExit):
-                            raise
-                        except DagrException as link_error:
-                            self.handle_download_error(link, link_error)
-                            continue
-                        if not self.test_only:
-                            try:
-                                self.get(filelink, path_join(base_dir, filename), files_list)
-                            except DagrException as get_error:
-                                self.handle_download_error(link, get_error)
+                            if self.test_only:
+                                print(filelink)
                                 continue
-                            else:
-                                if link not in existing_pages:
-                                    existing_pages.append(link)
+                            self.get(filelink, path_join(base_dir, filename), files_list)
+                        except (KeyboardInterrupt, SystemExit):
+                            if pages:
+                                self.update_cache(base_dir, fn_cache,files_list)
+                                self.update_cache(base_dir, dp_cache, existing_pages)
+                            raise
+                        except DagrException as get_error:
+                            pages.remove(link)
+                            self.handle_download_error(link, get_error)
+                            continue
                         else:
-                            print(filelink)
+                            if link not in existing_pages:
+                                existing_pages.append(link)
                     if pages or (not path_exists(path_join(base_dir, fn_cache)) and files_list):
                         self.update_cache(base_dir, fn_cache, files_list)
                     if pages:
