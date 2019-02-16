@@ -16,9 +16,9 @@ class DagrBulkConfig():
             self.__dict__.update(json.load(filehandle))
 
 def main():
-    add_mimetype('binary/octet-stream', '.bin')
     config = DagrBulkConfig()
     ripper = dagr.Dagr()
+    add_mimetype('binary/octet-stream', '.bin')
     ripper.retry_exception_names = ['OSError', 'ChunkedEncodingError']
     for query in config.searches:
         ripper.start()
