@@ -117,7 +117,7 @@ class Dagr:
         add_mimetype('application/x-lha', '.lzh')
         add_mimetype('application/zip', '.zip')
         add_mimetype('image/x-ms-bmp', '.bmp')
-        add_mimeyype('application/x-shockwave-flash', '.swf')
+        add_mimetype('application/x-shockwave-flash', '.swf')
 
     def load_configuration(self):
         my_conf = configparser.ConfigParser()
