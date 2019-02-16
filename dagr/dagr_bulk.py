@@ -19,7 +19,7 @@ def main():
     config = DagrBulkConfig()
     ripper = dagr.Dagr()
     add_mimetype('binary/octet-stream', '.bin')
-    ripper.retry_exception_names = ['OSError', 'ChunkedEncodingError']
+    ripper.retry_exception_names = ['OSError', 'ChunkedEncodingError', 'ConnectionError']
     for query in config.searches:
         ripper.start()
         ripper.global_search(query)

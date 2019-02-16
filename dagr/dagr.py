@@ -544,6 +544,8 @@ class Dagr:
                         self.update_artists(base_dir, existing_pages, files_list)
             except (portalocker.exceptions.LockException,portalocker.exceptions.AlreadyLocked):
                 print('Skipping locked directory {}'.format(base_dir))
+            except PermissionError:
+                print('Unable to unlock {}'.format(base_dir))
 
     def backup_cache_file(self, file_name):
         backup_name = file_name + '.bak'
