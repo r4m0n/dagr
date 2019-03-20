@@ -70,6 +70,7 @@ class CacheSettings():
         self.file_names = '.filenames'
         self.downloaded_pages = '.dagr_downloaded_pages'
         self.artists = '.artists'
+        self.meta = '.meta'
 
 
 class Dagr:
@@ -142,6 +143,8 @@ class Dagr:
             self.cache.downloaded_pages = my_conf.get("Dagr.Cache", "DownloadedPages")
         if my_conf.has_option("Dagr.Cache", "Artists"):
             self.cache.artists = my_conf.get("Dagr.Cache", "Artists")
+        if my_conf.has_option("Dagr.Cache", "Meta"):
+            self.cache.meta = my_conf.get("Dagr.Cache", "Meta")
         if my_conf.has_option("Dagr.Cache", "IndexFile"):
             self.cache.index_file = my_conf.get("Dagr.Cache", "IndexFile")
 
@@ -271,8 +274,22 @@ class Dagr:
     def find_link(self, link):
         filelink = None
         filename = basename(link)
+        linkmeta = {}
         mature_error = False
         self.browser.open(link)
+
+        html = self.browser.get_current_page()
+        try:
+            linkmeta = {
+                'title': html.findAll('a', {'class': 'title'})[0].text,
+                'tags': [x.attrs['data-canonical-tag'] for x in html.findAll('a', {'class': 'discoverytag'})],
+                'description': str(html.findAll('div', {'class': 'dev-description'})[0].findChild()),
+                'copyright': html.findAll('span', {'class': 'cc-copy'})[0].text,
+                'category': html.findAll('span', {'class': 'dev-about-breadcrumb'})[0].text
+            }
+        except:
+            pass
+
         # Full image link (via download link)
         link_text = re.compile("Download( (Image|File))?")
         img_link = None
@@ -282,7 +299,7 @@ class Dagr:
                 break
 
         if img_link and img_link.get("data-download_url"):
-            return (filename, img_link)
+            return (filename, img_link, linkmeta)
 
         if self.verbose:
             print("Download link not found, falling back to direct image")
@@ -312,7 +329,7 @@ class Dagr:
         page_title = current_page.find("span", {"itemprop": "title"})
         if page_title and page_title.text == "Literature":
             filelink = self.browser.get_url()
-            return (filename, filelink)
+            return (filename, filelink, linkmeta)
 
         if not filelink:
            filelink = self.find_video(current_page)
@@ -336,7 +353,7 @@ class Dagr:
             else:
                 raise DagrException("all attemps to find a link failed")
 
-        return (filename, filelink)
+        return (filename, filelink, linkmeta)
 
     def find_video(self, current_page):
         try:
@@ -459,10 +476,13 @@ class Dagr:
             return []
         def artists():
             return {}
+        def meta():
+            return {}
         cache_defaults = {
             'filenames': filenames,
             'downloaded_pages': downloaded_pages,
-            'artists': artists
+            'artists': artists,
+            'meta': meta
         }
         for cache_type, cache_file in kwargs.items():
             cache_contents = self.load_cache_file(base_dir, cache_file)
@@ -500,9 +520,11 @@ class Dagr:
                     #Load caches
                     fn_cache =  self.cache.file_names
                     dp_cache = self.cache.downloaded_pages
-                    files_list, existing_pages = self.load_cache(base_dir,
+                    m_cache = self.cache.meta
+                    files_list, existing_pages, meta = self.load_cache(base_dir,
                         filenames = fn_cache,
-                        downloaded_pages = dp_cache
+                        downloaded_pages = dp_cache,
+                        meta = m_cache
                     )
                     if not self.overwrite:
                         pages = [x for x in pages if x not in existing_pages]
@@ -511,13 +533,15 @@ class Dagr:
                         if self.save_progress and count % self.save_progress == 0:
                             self.update_cache(base_dir, fn_cache,files_list)
                             self.update_cache(base_dir, dp_cache, existing_pages)
+                            self.update_cache(base_dir, m_cache, meta)
                         if self.verbose:
                             print("Downloading " + str(count) + " of " +
                                 str(len(pages)) + " ( " + link + " )")
                         filename = ""
                         filelink = ""
+                        linkmeta = {}
                         try:
-                            filename, filelink = self.find_link(link)
+                            filename, filelink, linkmeta = self.find_link(link)
                             if self.test_only:
                                 print(filelink)
                                 continue
@@ -526,6 +550,7 @@ class Dagr:
                             if pages:
                                 self.update_cache(base_dir, fn_cache,files_list)
                                 self.update_cache(base_dir, dp_cache, existing_pages)
+                                self.update_cache(base_dir, m_cache, meta)
                             raise
                         except DagrException as get_error:
                             pages.remove(link)
@@ -534,6 +559,7 @@ class Dagr:
                         else:
                             if link not in existing_pages:
                                 existing_pages.append(link)
+                            meta[filename] = linkmeta
                     if pages or (not path_exists(path_join(base_dir, fn_cache)) and files_list):
                         self.update_cache(base_dir, fn_cache, files_list)
                     if pages:
@@ -542,6 +568,7 @@ class Dagr:
                             not path_exists(path_join(base_dir, self.cache.artists))
                             and existing_pages):
                         self.update_artists(base_dir, existing_pages, files_list)
+                        self.update_cache(base_dir, m_cache, meta)
             except (portalocker.exceptions.LockException,portalocker.exceptions.AlreadyLocked):
                 print('Skipping locked directory {}'.format(base_dir))
             except PermissionError:
