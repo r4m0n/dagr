@@ -29,8 +29,8 @@ setup(
     description='a deviantArt image downloader script written in Python',
     author='Bernard Cafarelli',
     url='https://github.com/voyageur/dagr',
-    scripts=['dagr/dagr.py'],
+    scripts=['dagr/dagr.py', 'dagr/dagr_bulk.py'],
     data_files=[('share/dagr', ['dagr_settings.ini.sample'])],
     packages=(),
-    install_requires=["MechanicalSoup >= 0.10.0"],
+    install_requires=["MechanicalSoup >= 0.10.0", 'portalocker'],
 )
